@@ -81,18 +81,21 @@ def main():
   assert len(images) == len(lasers), "Images and lasers length mismatch!"
 
   # Camera intrinsics, from camera calibration process
-  # TODO: Change this into the camera intrinsic calibration results
-  camera_k = np.array([(519.26845842, 0.0, 331.11197675), (0.0, 518.89359517, 229.43433605), (0.0, 0.0, 1.0)])
-  camera_dist = np.array([(0.11418155, 0.19343114, -0.00268067, 0.00371577, -1.09539701)])
+  # TODO (DONE): Change this into the camera intrinsic calibration results 
+
+  camera_k = np.array([(504.88553976, 0.0, 329.19057787), (0.0, 504.49404059, 238.45004368), (0.0, 0.0, 1.0)])
+  camera_dist = np.array([(0.15162356, -0.49667566, 0.00058943, 0.01019974, -0.12213047)])
+
 
   # termination criteria, for aligning checkerboard corners onto an image
   criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
-  # Checkerboard shape, example: 7*10 in checkerboard blocks, 20 mm in checkerboard block size
-  # TODO: Change the checkerboard parameters into those that match with the actual board you are using
-  checkerboard_height = 7
-  checkerboard_width = 10 
-  checkerboard_size = 0.02
+  # Checkerboard shape, example: 9*12 in checkerboard blocks, 19 mm in checkerboard block size
+  # TODO (DONE): Change the checkerboard parameters into those that match with the actual board you are using
+
+  checkerboard_height = 8
+  checkerboard_width = 11
+  checkerboard_size = 0.019
   checkerboard_points = np.zeros((checkerboard_width*checkerboard_height, 3), np.float32)
   checkerboard_points[:,:2] = np.mgrid[0:checkerboard_height,0:checkerboard_width].T.reshape(-1,2)*checkerboard_size
 
@@ -178,6 +181,8 @@ def main():
   # This can be obtained from an initial measurement. 
   # A good ICP system should not need this initialisation, but sometimes it helps. 
   # TODO: If you need to, you may put your own desired/measured transformation into the initial_tf 
+  # Decided to stay with identity matrix as initial tf
+
   initial_tf = np.identity(3)
   # initial_tf[0, 2] = -0.1
   laser_points_initial_correction = []
