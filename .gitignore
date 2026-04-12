@@ -8,3 +8,13 @@ checkpoint/
 
 # Large data files
 *.p
+
+# Virtual environment
+venv/
+
+# Generated output images
+task3/output/
+
+# macOS metadata
+.DS_Store
+get-pip.py
