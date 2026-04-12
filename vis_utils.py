@@ -385,7 +385,7 @@ def visualize_dataset_statistics(X_train, y_train, X_valid, y_valid, X_test, y_t
     print("Dataset visualization complete.")
 
 
-def visualize_training_results(train_loss_list, train_acc_list, val_loss_list, val_acc_list, best_acc, optimizer, learning_rate, batch_size, scheduler_type):
+def visualize_training_results(train_loss_list, train_acc_list, val_loss_list, val_acc_list, best_acc, optimizer, learning_rate, batch_size, scheduler_type, save_path=None):
     """
     Visualize training results
     
@@ -436,8 +436,10 @@ def visualize_training_results(train_loss_list, train_acc_list, val_loss_list, v
     plt.tight_layout()
     
     # Save the chart
-    os.makedirs('results', exist_ok=True)
-    plt.savefig(os.path.join('results', 'training_results.png'))
+    if save_path is None:
+        save_path = os.path.join('results', 'training_results.png')
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.savefig(save_path)
     plt.show()
 
 
@@ -523,7 +525,7 @@ def visualize_predictions(model, test_loader, class_names, device, num_samples=1
     plt.show()
 
 
-def plot_confusion_matrix(model, test_loader, class_names, device, criterion):
+def plot_confusion_matrix(model, test_loader, class_names, device, criterion, save_path=None):
     """
     Plot confusion matrix
     
@@ -592,8 +594,10 @@ def plot_confusion_matrix(model, test_loader, class_names, device, criterion):
     plt.title('Confusion Matrix')
     
     # Save confusion matrix
-    os.makedirs('results', exist_ok=True)
-    plt.savefig(os.path.join('results', 'confusion_matrix.png'))
+    if save_path is None:
+        save_path = os.path.join('results', 'confusion_matrix.png')
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.savefig(save_path)
     plt.show()
     
     return {
@@ -603,6 +607,123 @@ def plot_confusion_matrix(model, test_loader, class_names, device, criterion):
         'predictions': all_preds,
         'targets': all_targets
     }
+
+
+def visualize_success_failure_samples(model, test_loader, class_names, device, num_success=3, num_failure=3):
+    """
+    Visualize successful and unsuccessful predictions separately.
+
+    Args:
+        model (nn.Module): Trained model
+        test_loader (DataLoader): Test data loader
+        class_names (dict): Dictionary mapping class indices to names
+        device (torch.device): Device to run the model on
+        num_success (int): Number of successful samples to show
+        num_failure (int): Number of failure samples to show
+    """
+    model.eval()
+
+    correct_samples = []  # (image, true_label, pred_label, confidence)
+    incorrect_samples = []
+
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+
+    with torch.no_grad():
+        for batch_idx, (inputs, targets) in enumerate(test_loader):
+            if isinstance(inputs, list) and len(inputs) > 1:
+                inputs = inputs[0]
+            inputs, targets = inputs.to(device), targets.to(device)
+            outputs = model(inputs)
+            probs = torch.softmax(outputs, dim=1)
+            confidences, preds = probs.max(1)
+
+            for i in range(inputs.size(0)):
+                img = inputs[i].cpu().permute(1, 2, 0).numpy()
+                img = std * img + mean
+                img = np.clip(img, 0, 1)
+
+                entry = (img, targets[i].item(), preds[i].item(), confidences[i].item())
+                if preds[i] == targets[i]:
+                    correct_samples.append(entry)
+                else:
+                    incorrect_samples.append(entry)
+
+    # Pick diverse correct samples (different classes, highest confidence)
+    correct_samples.sort(key=lambda x: x[3], reverse=True)
+    selected_correct = []
+    seen_classes = set()
+    for s in correct_samples:
+        if s[1] not in seen_classes:
+            selected_correct.append(s)
+            seen_classes.add(s[1])
+        if len(selected_correct) == num_success:
+            break
+    # Fill remaining if not enough unique classes
+    if len(selected_correct) < num_success:
+        for s in correct_samples:
+            if s not in selected_correct:
+                selected_correct.append(s)
+            if len(selected_correct) == num_success:
+                break
+
+    # Pick failure samples sorted by confidence (most confident wrong predictions first)
+    incorrect_samples.sort(key=lambda x: x[3], reverse=True)
+    selected_incorrect = incorrect_samples[:num_failure]
+
+    # Print failure details to console
+    print(f"\n=== Incorrect Predictions ({len(incorrect_samples)} total failures) ===")
+    for idx, (_, true_label, pred_label, conf) in enumerate(selected_incorrect):
+        print(f"  Sample {idx+1}: True={class_names[true_label]}, "
+              f"Predicted={class_names[pred_label]}, Confidence={conf*100:.1f}%")
+
+    # Create figure
+    n_cols = max(num_success, len(selected_incorrect))
+    fig, axes = plt.subplots(2, n_cols, figsize=(n_cols * 4, 8))
+
+    # Top row: successes
+    for i in range(n_cols):
+        ax = axes[0, i]
+        if i < len(selected_correct):
+            img, true_label, pred_label, conf = selected_correct[i]
+            ax.imshow(img)
+            ax.set_title(f"Pred: {class_names[pred_label]}\nConf: {conf*100:.1f}%",
+                         color='green', fontsize=11, fontweight='bold')
+            for spine in ax.spines.values():
+                spine.set_edgecolor('green')
+                spine.set_linewidth(3)
+        else:
+            ax.axis('off')
+            continue
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    # Bottom row: failures
+    for i in range(n_cols):
+        ax = axes[1, i]
+        if i < len(selected_incorrect):
+            img, true_label, pred_label, conf = selected_incorrect[i]
+            ax.imshow(img)
+            ax.set_title(f"Pred: {class_names[pred_label]} (Conf: {conf*100:.1f}%)\n"
+                         f"True: {class_names[true_label]}",
+                         color='red', fontsize=11, fontweight='bold')
+            for spine in ax.spines.values():
+                spine.set_edgecolor('red')
+                spine.set_linewidth(3)
+        else:
+            ax.axis('off')
+            continue
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    axes[0, 0].set_ylabel("Correct", fontsize=14, fontweight='bold')
+    axes[1, 0].set_ylabel("Incorrect", fontsize=14, fontweight='bold')
+    plt.tight_layout()
+
+    os.makedirs('results', exist_ok=True)
+    plt.savefig(os.path.join('results', 'success_failure_samples.png'), dpi=150)
+    plt.show()
+    print("Saved to results/success_failure_samples.png")
 
 
 def analyze_dataset(X_train, y_train, X_valid, y_valid, X_test, y_test, class_names, visualize=True):

@@ -186,6 +186,7 @@ def main():
     parser.add_argument('--momentum', default=0.9, type=float, help='SGD momentum')
     parser.add_argument('--step_size', default=30, type=int, help='Learning rate step size')
     parser.add_argument('--gamma', default=0.1, type=float, help='Learning rate decay rate')
+    parser.add_argument('--no-augment', action='store_true', help='Disable data augmentation for baseline comparison')
     args = parser.parse_args()
     
     # Set random seed for reproducibility
@@ -212,7 +213,8 @@ def main():
         processor.load_data(training_file, validation_file, testing_file)
     
     # Create datasets
-    train_dataset, valid_dataset, test_dataset = processor.create_datasets(augment_train=True, include_original=False)
+    use_augment = not args.no_augment
+    train_dataset, valid_dataset, test_dataset = processor.create_datasets(augment_train=use_augment, include_original=False)
     train_loader, val_loader, test_loader = processor.create_data_loaders(
         train_dataset, valid_dataset, test_dataset, batch_size=args.batch_size, num_workers=args.workers)
     
@@ -359,29 +361,49 @@ def main():
     
     # Test the best model
     print("\nTesting the best model...")
-    
+
     # Load the best model
     best_model_path = './checkpoint/best_model.pth'
-    
+
     if os.path.exists(best_model_path):
         checkpoint = torch.load(best_model_path)
         model.load_state_dict(checkpoint['model'])
     else:
         print("Warning: Best model not found, using current model for testing")
-    
+
+    # Determine output prefix for no-augment baseline
+    result_prefix = 'no_augment_' if args.no_augment else ''
+
     # Test
-    test_results = vis_utils.plot_confusion_matrix(model, test_loader, processor.class_names, device, criterion)
-    
+    test_results = vis_utils.plot_confusion_matrix(
+        model, test_loader, processor.class_names, device, criterion,
+        save_path=os.path.join('results', f'{result_prefix}confusion_matrix.png')
+    )
+
     # Visualize results
     vis_utils.visualize_training_results(
-        train_loss_list, train_acc_list, val_loss_list, val_acc_list, 
-        best_acc, args.optimizer, args.lr, args.batch_size, args.scheduler
+        train_loss_list, train_acc_list, val_loss_list, val_acc_list,
+        best_acc, args.optimizer, args.lr, args.batch_size, args.scheduler,
+        save_path=os.path.join('results', f'{result_prefix}training_results.png')
     )
-    
+
     # Visualize predictions
     vis_utils.visualize_predictions(model, test_loader, processor.class_names, device)
-    
-    print(f"\nTraining complete! Best validation accuracy: {best_acc:.2f}%, Test accuracy: {test_results['accuracy']:.2f}%")
+
+    # Visualize 3 success + 3 failure samples
+    vis_utils.visualize_success_failure_samples(model, test_loader, processor.class_names, device)
+
+    # Print training summary
+    augment_desc = "None (baseline)" if args.no_augment else \
+        "ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2), RandomRotation(15), RandomAffine(translate=(0.1, 0.1))"
+    print(f"\n=== Training Summary ===")
+    print(f"Optimizer: {args.optimizer}")
+    print(f"Learning Rate: {args.lr}")
+    print(f"Batch Size: {args.batch_size}")
+    print(f"Epochs: {args.epochs}")
+    print(f"Best Validation Accuracy: {best_acc:.2f}%")
+    print(f"Final Test Accuracy: {test_results['accuracy']:.2f}%")
+    print(f"Augmentations: {augment_desc}")
 
 
 if __name__ == '__main__':

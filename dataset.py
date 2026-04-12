@@ -303,11 +303,12 @@ class TrafficSignProcessor:
             train_transform = transforms.Compose([
                 # Basic transformations
                 transforms.Resize((img_size, img_size)),
-                
+
                 # Data augmentation
-                transforms.ColorJitter(brightness=0.2, contrast=0.2), 
-                transforms.RandomRotation(degrees=15),
-                
+                transforms.RandomRotation(15),
+                transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
+                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+
                 # Convert to tensor and normalize
                 transforms.ToTensor(),
                 transforms.Normalize(mean, std)
