@@ -14,6 +14,7 @@ venv/
 
 # Generated output images
 task3/output/
+task3/report_figures/
 
 # macOS metadata
 .DS_Store

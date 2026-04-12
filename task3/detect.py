@@ -8,7 +8,7 @@ Workflow:
   3. Morphologically clean the mask, then find contours.
   4. Filter contours by area and aspect ratio to keep likely cylinders.
   5. Return axis-aligned bounding boxes and corresponding sign crops
-     (upper portion of each box, where the traffic sign lives).
+     (middle portion of each box, where the traffic sign lives).
 """
 
 import cv2
@@ -30,8 +30,9 @@ MAX_AREA   = 80_000 # px² — discard full-frame blobs
 MIN_ASPECT = 0.15   # width/height — very wide blobs are probably not cylinders
 MAX_ASPECT = 2.5    # width/height — also discard very wide blobs
 
-# Sign is in the top fraction of the cylinder bounding box
-SIGN_FRACTION = 0.55   # use top 55 % of box height as the sign region
+# Sign is mounted roughly in the middle third of the cylinder bounding box
+SIGN_START    = 0.15   # crop starts this fraction down from the top of the box
+SIGN_END      = 0.65   # crop ends this fraction down from the top of the box
 SIGN_MIN_PX   = 20     # skip sign crops smaller than this in either dimension
 
 
@@ -91,9 +92,10 @@ def detect_cylinders(image: np.ndarray,
 
         boxes.append((x, y, w, h))
 
-        # ── Sign crop — top SIGN_FRACTION of the bounding box ────────────────
-        sign_h = max(int(h * SIGN_FRACTION), 1)
-        crop   = image[y : y + sign_h, x : x + w]
+        # ── Sign crop — middle section of the bounding box ───────────────────
+        sign_y0 = y + int(h * SIGN_START)
+        sign_y1 = y + int(h * SIGN_END)
+        crop    = image[sign_y0 : sign_y1, x : x + w]
         if crop.shape[0] >= SIGN_MIN_PX and crop.shape[1] >= SIGN_MIN_PX:
             sign_crops.append(crop)
         else:
@@ -126,8 +128,9 @@ def draw_detections(image:  np.ndarray,
         cv2.rectangle(vis, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
         # Sign region indicator — blue
-        sign_h = int(h * SIGN_FRACTION)
-        cv2.rectangle(vis, (x, y), (x + w, y + sign_h), (255, 100, 0), 1)
+        sign_y0 = y + int(h * SIGN_START)
+        sign_y1 = y + int(h * SIGN_END)
+        cv2.rectangle(vis, (x, sign_y0), (x + w, sign_y1), (255, 100, 0), 1)
 
         # Annotation text
         parts = []
