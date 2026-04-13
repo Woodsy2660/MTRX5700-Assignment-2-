@@ -7,8 +7,9 @@ Workflow:
      catch orange that wraps around hue=0 in OpenCV's 0-179 scale).
   3. Morphologically clean the mask, then find contours.
   4. Filter contours by area and aspect ratio to keep likely cylinders.
-  5. Return axis-aligned bounding boxes and corresponding sign crops
-     (middle portion of each box, where the traffic sign lives).
+  5. Merge vertically stacked boxes that belong to the same cylinder — the
+     sign (non-orange) splits each cylinder into an upper and lower blob.
+  6. The sign crop is the gap region between the two merged sub-boxes.
 """
 
 import cv2
@@ -30,10 +31,12 @@ MAX_AREA   = 80_000 # px² — discard full-frame blobs
 MIN_ASPECT = 0.15   # width/height — very wide blobs are probably not cylinders
 MAX_ASPECT = 2.5    # width/height — also discard very wide blobs
 
-# Sign is mounted roughly in the middle third of the cylinder bounding box
-SIGN_START    = 0.15   # crop starts this fraction down from the top of the box
-SIGN_END      = 0.65   # crop ends this fraction down from the top of the box
-SIGN_MIN_PX   = 20     # skip sign crops smaller than this in either dimension
+# Merging: two boxes are the same cylinder if their horizontal centres are
+# within this many pixels of each other and they are vertically close/touching.
+MERGE_X_TOL   = 60    # px — max horizontal centre distance to consider same cylinder
+MERGE_Y_GAP   = 80    # px — max vertical gap between boxes to attempt merge
+
+SIGN_MIN_PX   = 20    # skip sign crops smaller than this in either dimension
 
 
 def detect_cylinders(image: np.ndarray,
@@ -77,32 +80,95 @@ def detect_cylinders(image: np.ndarray,
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
                                    cv2.CHAIN_APPROX_SIMPLE)
 
-    boxes      : list[tuple[int,int,int,int]] = []
-    sign_crops : list[np.ndarray]             = []
+    raw_boxes : list[tuple[int,int,int,int]] = []
 
     for cnt in contours:
         area = cv2.contourArea(cnt)
         if not (MIN_AREA <= area <= MAX_AREA):
             continue
-
         x, y, w, h = cv2.boundingRect(cnt)
         aspect = w / max(h, 1)
         if not (MIN_ASPECT <= aspect <= MAX_ASPECT):
             continue
+        raw_boxes.append((x, y, w, h))
 
-        boxes.append((x, y, w, h))
+    # ── Merge vertically stacked boxes from the same cylinder ────────────────
+    # The sign (non-orange) splits each cylinder into an upper and lower blob.
+    # We group boxes by horizontal proximity then merge each group into one
+    # combined box; the sign crop is the gap between the sub-boxes.
+    merged_boxes, sign_crops = _merge_boxes(image, raw_boxes)
+    return merged_boxes, sign_crops
 
-        # ── Sign crop — middle section of the bounding box ───────────────────
-        sign_y0 = y + int(h * SIGN_START)
-        sign_y1 = y + int(h * SIGN_END)
-        crop    = image[sign_y0 : sign_y1, x : x + w]
-        if crop.shape[0] >= SIGN_MIN_PX and crop.shape[1] >= SIGN_MIN_PX:
-            sign_crops.append(crop)
+
+def _merge_boxes(image: np.ndarray,
+                 boxes: list[tuple[int,int,int,int]]
+                 ) -> tuple[list[tuple[int,int,int,int]], list[np.ndarray]]:
+    """
+    Group raw boxes into cylinders by horizontal proximity, merge each group
+    into one spanning box, and extract the sign crop from the gap between the
+    upper and lower sub-boxes.
+
+    For a single unmerged box (no partner found) the sign crop falls back to
+    the middle third of the box.
+    """
+    if not boxes:
+        return [], []
+
+    used   = [False] * len(boxes)
+    merged : list[tuple[int,int,int,int]] = []
+    crops  : list[np.ndarray]             = []
+
+    # Sort top-to-bottom so the first box in each group is always the upper one
+    boxes = sorted(boxes, key=lambda b: b[1])
+
+    for i, (xi, yi, wi, hi) in enumerate(boxes):
+        if used[i]:
+            continue
+        cx_i = xi + wi // 2
+
+        # Find the best partner: same horizontal column, directly below, close
+        best_j   = -1
+        best_gap = MERGE_Y_GAP + 1
+
+        for j, (xj, yj, wj, hj) in enumerate(boxes):
+            if j <= i or used[j]:
+                continue
+            cx_j = xj + wj // 2
+            if abs(cx_i - cx_j) > MERGE_X_TOL:
+                continue          # different column
+            gap = yj - (yi + hi)  # vertical gap between bottom of i and top of j
+            if 0 <= gap <= MERGE_Y_GAP and gap < best_gap:
+                best_gap = gap
+                best_j   = j
+
+        if best_j >= 0:
+            # ── Merge the two boxes ──────────────────────────────────────────
+            xj, yj, wj, hj = boxes[best_j]
+            mx = min(xi, xj)
+            my = yi
+            mw = max(xi + wi, xj + wj) - mx
+            mh = (yj + hj) - yi
+            merged.append((mx, my, mw, mh))
+            used[i] = used[best_j] = True
+
+            # Sign crop = the gap between bottom of upper box and top of lower
+            gap_y0 = yi + hi
+            gap_y1 = yj
+            crop   = image[gap_y0:gap_y1, mx:mx + mw]
         else:
-            sign_crops.append(np.zeros((SIGN_MIN_PX, SIGN_MIN_PX, 3),
-                                       dtype=np.uint8))
+            # ── No partner — use middle third of the single box ──────────────
+            merged.append((xi, yi, wi, hi))
+            used[i] = True
+            gap_y0  = yi + hi // 3
+            gap_y1  = yi + (2 * hi) // 3
+            crop    = image[gap_y0:gap_y1, xi:xi + wi]
 
-    return boxes, sign_crops
+        if crop.shape[0] >= SIGN_MIN_PX and crop.shape[1] >= SIGN_MIN_PX:
+            crops.append(crop)
+        else:
+            crops.append(np.zeros((SIGN_MIN_PX, SIGN_MIN_PX, 3), dtype=np.uint8))
+
+    return merged, crops
 
 
 def draw_detections(image:  np.ndarray,
@@ -127,9 +193,9 @@ def draw_detections(image:  np.ndarray,
         # Cylinder box — green
         cv2.rectangle(vis, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-        # Sign region indicator — blue
-        sign_y0 = y + int(h * SIGN_START)
-        sign_y1 = y + int(h * SIGN_END)
+        # Sign region indicator — blue (middle third of merged box)
+        sign_y0 = y + h // 3
+        sign_y1 = y + (2 * h) // 3
         cv2.rectangle(vis, (x, sign_y0), (x + w, sign_y1), (255, 100, 0), 1)
 
         # Annotation text
