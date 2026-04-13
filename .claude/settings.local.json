@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(source:*)",
+      "Bash(python3:*)",
+      "Bash(pip3 list:*)",
+      "Bash(pip3 install:*)",
+      "Bash(apt list:*)",
+      "Bash(sudo apt-get install:*)",
+      "Bash(/mnt/c/Windows/System32/cmd.exe /c \"cd /d C:\\\\Users\\\\bwood\\\\ANTIGRAVITY PROJECTS\\\\MTRX5700-Assignment-2- && python --version && python -c \"\"import torch; print\\(''torch:'', torch.__version__\\)\"\"\")",
+      "Bash(powershell.exe -Command \"cd ''C:\\\\Users\\\\bwood\\\\ANTIGRAVITY PROJECTS\\\\MTRX5700-Assignment-2-''; python -c ''import torch; print\\(torch.__version__\\)''\")",
+      "Bash(powershell.exe:*)"
+    ]
+  }
+}
