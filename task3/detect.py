@@ -19,8 +19,8 @@ from pathlib import Path
 # ── Colour thresholds ────────────────────────────────────────────────────────
 # Orange in OpenCV HSV (H: 0-179, S: 0-255, V: 0-255).
 # We cover two sub-ranges so that deep orange / reddish-orange is caught.
-ORANGE_LOWER_1 = np.array([0,  120, 80],  dtype=np.uint8)
-ORANGE_UPPER_1 = np.array([18, 255, 255], dtype=np.uint8)
+ORANGE_LOWER_1 = np.array([0, 50, 50],  dtype=np.uint8)
+ORANGE_UPPER_1 = np.array([25, 255, 255], dtype=np.uint8)
 ORANGE_LOWER_2 = np.array([165, 120, 80],  dtype=np.uint8)
 ORANGE_UPPER_2 = np.array([179, 255, 255], dtype=np.uint8)
 
