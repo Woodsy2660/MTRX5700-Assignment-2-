@@ -1,1 +1,1 @@
-Task 1's code ran following direct commandline instructions from the teaching github repos. 
+Task 1's code ran following commandline instructions directly sourced from the teaching github repos. 
