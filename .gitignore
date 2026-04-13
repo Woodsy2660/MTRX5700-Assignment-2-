@@ -1,0 +1,21 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Trained models and checkpoints
+checkpoint/
+*.pth
+
+# Large data files
+*.p
+
+# Virtual environment
+venv/
+
+# Generated output images
+task3/output/
+task3/report_figures/
+
+# macOS metadata
+.DS_Store
+get-pip.py
